@@ -4,6 +4,7 @@ import socket from "../utils/socket";
 
 function Home() {
   const [user, setUser] = useState({});
+  const [roomId,setRoomId]=useState();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -25,10 +26,19 @@ function Home() {
 
     socket.once("room-created", (roomId) =>{
         console.log("Room created with ID:", roomId);
-        navigate('/Room/${roomId}'); 
+        navigate(`/Room/${roomId}`); 
     }
 )
   };
+
+  const handleJoin = ()=>{
+     socket.emit("Join room",roomId);
+     
+  socket.once("room-joined", (validRoomId) => {
+    navigate(`/room/${validRoomId}`);
+  });
+
+  }
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-6">
@@ -57,6 +67,21 @@ function Home() {
           >
             Create Room
           </button>
+          <div className="mt-6 text-center">
+  <input
+    type="text"
+    placeholder="Enter Room ID"
+    value={roomId}
+    onChange={(e) => setRoomId(e.target.value)}
+    className="border px-4 py-2 rounded-lg mr-2"
+  />
+  <button
+    onClick={handleJoin}
+    className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition"
+  >
+    Join Room
+  </button>
+</div>
         </div>
       </div>
     </div>

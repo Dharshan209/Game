@@ -22,7 +22,8 @@ io.on('connection', (socket) => {
     createRoom(io,socket);
 });
   
-server.listen(3000,()=>{
-    console.log('server is on');
-}
-);
+const PORT = import.meta.env.PORT || 3000;
+
+server.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});
