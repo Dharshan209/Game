@@ -32,7 +32,7 @@ function Home() {
   };
 
   const handleJoin = ()=>{
-     socket.emit("Join room",roomId);
+     socket.emit("join room",roomId);
      
   socket.once("room-joined", (validRoomId) => {
     navigate(`/room/${validRoomId}`);
