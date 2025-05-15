@@ -4,7 +4,7 @@ import socket from "../utils/socket";
 
 function Home() {
   const [user, setUser] = useState({});
-  const [roomId,setRoomId]=useState();
+  const [roomId, setRoomId] = useState("");
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -23,28 +23,35 @@ function Home() {
     socket.emit("create-room");
     console.log("Create Room clicked");
 
+    socket.once("room-created", (roomId) => {
+      console.log("Room created with ID:", roomId);
+      navigate(`/room/${roomId}`);
+    });
 
-    socket.once("room-created", (roomId) =>{
-        console.log("Room created with ID:", roomId);
-        navigate(`/Room/${roomId}`); 
-    }
-)
   };
 
-  const handleJoin = ()=>{
-     socket.emit("join room",roomId);
-     
-  socket.once("room-joined", (validRoomId) => {
-    navigate(`/room/${validRoomId}`);
-  });
+  const handleJoin = () => {
+    if (!roomId || roomId.trim() === "") {
+      alert("Please enter a valid Room ID");
+      return;
+    }
 
-  }
+    socket.emit("join room", roomId.trim());
+
+    socket.once("room-joined", (validRoomId) => {
+      navigate(`/room/${validRoomId}`);
+    });
+
+    // Optional: Remove previous listeners to prevent duplicates on multiple joins
+  };
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-6">
       <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-xl">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-gray-800">Welcome, {user.username}!</h1>
+          <h1 className="text-2xl font-bold text-gray-800">
+            Welcome, {user?.username || "Guest"}!
+          </h1>
           <button
             onClick={handleLogout}
             className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition"
@@ -67,21 +74,22 @@ function Home() {
           >
             Create Room
           </button>
+
           <div className="mt-6 text-center">
-  <input
-    type="text"
-    placeholder="Enter Room ID"
-    value={roomId}
-    onChange={(e) => setRoomId(e.target.value)}
-    className="border px-4 py-2 rounded-lg mr-2"
-  />
-  <button
-    onClick={handleJoin}
-    className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition"
-  >
-    Join Room
-  </button>
-</div>
+            <input
+              type="text"
+              placeholder="Enter Room ID"
+              value={roomId}
+              onChange={(e) => setRoomId(e.target.value)}
+              className="border px-4 py-2 rounded-lg mr-2"
+            />
+            <button
+              onClick={handleJoin}
+              className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition"
+            >
+              Join Room
+            </button>
+          </div>
         </div>
       </div>
     </div>
