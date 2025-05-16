@@ -6,7 +6,13 @@ import GameUI from './GameUI';
 import GameInstructions from './GameInstructions';
 
 const ICE_SERVERS = {
-  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' }
+  ]
 };
 
 function Room() {
@@ -84,9 +90,25 @@ function Room() {
     }
     
     function handleAllUsers(users) {
+      console.log('Received all users in room:', users);
       users.forEach(userId => {
-        callUser(userId);
+        // Check if we already have a connection to this user
+        if (!peersRef.current[userId]) {
+          console.log(`Initiating connection to user: ${userId}`);
+          callUser(userId);
+        } else {
+          console.log(`Already connected to user: ${userId}`);
+        }
       });
+    }
+    
+    function handleUserJoined(userId) {
+      console.log(`New user joined: ${userId}`);
+      // When a new user joins, initiate a connection to them
+      if (!peersRef.current[userId]) {
+        console.log(`Initiating connection to new user: ${userId}`);
+        callUser(userId);
+      }
     }
     
     function handleRoomError(msg) {
@@ -102,6 +124,7 @@ function Room() {
     socket.on('room-joined', handleRoomJoined);
     socket.on('player-count', handlePlayerCount);
     socket.on('all users', handleAllUsers);
+    socket.on('user-joined', handleUserJoined); // Add handler for new user
     socket.on('offer', handleReceiveOffer);
     socket.on('answer', handleAnswer);
     socket.on('ice-candidate', handleNewICECandidate);
@@ -252,11 +275,29 @@ function Room() {
     const peer = new RTCPeerConnection(ICE_SERVERS);
     peersRef.current[userId] = peer;
 
+    // Add connection state monitoring
+    peer.onconnectionstatechange = () => {
+      console.log(`Connection state change for peer ${userId}: ${peer.connectionState}`);
+    };
+    
+    peer.oniceconnectionstatechange = () => {
+      console.log(`ICE connection state change for peer ${userId}: ${peer.iceConnectionState}`);
+    };
+    
+    peer.onicegatheringstatechange = () => {
+      console.log(`ICE gathering state change for peer ${userId}: ${peer.iceGatheringState}`);
+    };
+    
+    peer.onsignalingstatechange = () => {
+      console.log(`Signaling state change for peer ${userId}: ${peer.signalingState}`);
+    };
+
     localStreamRef.current.getTracks().forEach(track => {
       peer.addTrack(track, localStreamRef.current);
     });
 
     peer.ontrack = event => {
+      console.log(`Track received from peer ${userId}`, event.streams);
       setRemoteStreams(prev => [
         ...prev.filter(s => s.id !== userId), // prevent duplicates
         { id: userId, stream: event.streams[0] }
@@ -265,6 +306,7 @@ function Room() {
 
     peer.onicecandidate = event => {
       if (event.candidate) {
+        console.log(`Sending ICE candidate to peer ${userId}`, event.candidate);
         socket.emit('ice-candidate', {
           target: userId,
           candidate: event.candidate
@@ -287,12 +329,30 @@ function Room() {
   function handleReceiveOffer({ callerId, sdp }) {
     const peer = new RTCPeerConnection(ICE_SERVERS);
     peersRef.current[callerId] = peer;
+    
+    // Add connection state monitoring
+    peer.onconnectionstatechange = () => {
+      console.log(`Connection state change for peer ${callerId}: ${peer.connectionState}`);
+    };
+    
+    peer.oniceconnectionstatechange = () => {
+      console.log(`ICE connection state change for peer ${callerId}: ${peer.iceConnectionState}`);
+    };
+    
+    peer.onicegatheringstatechange = () => {
+      console.log(`ICE gathering state change for peer ${callerId}: ${peer.iceGatheringState}`);
+    };
+    
+    peer.onsignalingstatechange = () => {
+      console.log(`Signaling state change for peer ${callerId}: ${peer.signalingState}`);
+    };
 
     localStreamRef.current.getTracks().forEach(track => {
       peer.addTrack(track, localStreamRef.current);
     });
 
     peer.ontrack = event => {
+      console.log(`Track received from peer ${callerId}`, event.streams);
       setRemoteStreams(prev => [
         ...prev.filter(s => s.id !== callerId),
         { id: callerId, stream: event.streams[0] }
@@ -301,6 +361,7 @@ function Room() {
 
     peer.onicecandidate = event => {
       if (event.candidate) {
+        console.log(`Sending ICE candidate to peer ${callerId}`, event.candidate);
         socket.emit('ice-candidate', {
           target: callerId,
           candidate: event.candidate
@@ -333,19 +394,40 @@ function Room() {
   function handleNewICECandidate({ target, candidate }) {
     const peer = peersRef.current[target];
     if (peer) {
-      peer.addIceCandidate(new RTCIceCandidate(candidate)).catch(err => {
-        console.error("Error adding ICE candidate:", err);
-      });
+      console.log(`Received ICE candidate for peer ${target}`, candidate);
+      
+      // Only add ICE candidate if we have a remote description
+      if (peer.remoteDescription && peer.remoteDescription.type) {
+        peer.addIceCandidate(new RTCIceCandidate(candidate))
+          .then(() => {
+            console.log(`Successfully added ICE candidate for peer ${target}`);
+          })
+          .catch(err => {
+            console.error(`Error adding ICE candidate for peer ${target}:`, err);
+          });
+      } else {
+        console.warn(`Skipping ICE candidate as remote description not set for peer ${target}`);
+      }
+    } else {
+      console.error(`Received ICE candidate for unknown peer ${target}`);
     }
   }
 
   function handleUserDisconnected(userId) {
+    console.log(`User disconnected: ${userId}`);
     const peer = peersRef.current[userId];
     if (peer) {
+      console.log(`Closing peer connection to ${userId}`);
       peer.close();
       delete peersRef.current[userId];
     }
-    setRemoteStreams(prev => prev.filter(s => s.id !== userId));
+    
+    // Remove user's stream from state
+    setRemoteStreams(prev => {
+      const filteredStreams = prev.filter(s => s.id !== userId);
+      console.log(`Removed stream for user ${userId}, remaining streams: ${filteredStreams.length}`);
+      return filteredStreams;
+    });
   }
   
   // Find player names for remote streams
