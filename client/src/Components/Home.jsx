@@ -42,7 +42,7 @@ function Home() {
       navigate(`/room/${validRoomId}`);
     });
 
-    // Optional: Remove previous listeners to prevent duplicates on multiple joins
+    
   };
 
   return (
