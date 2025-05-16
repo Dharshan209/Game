@@ -26,7 +26,9 @@ function Signup() {
 
     if (error) {
       console.log("Error inserting:", error.message);
+      alert("Error creating account: " + error.message);
     } else {
+      alert("Account created successfully! You can now log in.");
       navigate('/');
       console.log("Successfully inserted:", data);
     }

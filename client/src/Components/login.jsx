@@ -20,9 +20,11 @@ function Login() {
 
     if (error || !profiles) {
       console.log("Invalid username or password");
+      alert("Invalid username or password");
     } else {
       console.log("Successful login");
-      localStorage.setItem("user",JSON.stringify(profiles));
+      localStorage.setItem("user", JSON.stringify(profiles));
+      localStorage.setItem("username", profiles.username);
       navigate('/Home');
     }
   };

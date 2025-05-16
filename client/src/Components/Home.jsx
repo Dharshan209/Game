@@ -11,8 +11,40 @@ function Home() {
     const storedData = localStorage.getItem("user");
     if (storedData) {
       setUser(JSON.parse(storedData));
+    } else {
+      // If no user data, redirect to login
+      navigate('/');
     }
-  }, []);
+
+    // Set up socket event handlers
+    socket.on("room-created", (newRoomId) => {
+      console.log("Room created with ID:", newRoomId);
+      
+      // Store the room ID in localStorage so we can handle page refreshes
+      localStorage.setItem('lastRoomId', newRoomId);
+      
+      // Add a small delay to let the server set up the room fully
+      setTimeout(() => {
+        navigate(`/room/${newRoomId}`);
+      }, 500);
+    });
+
+    socket.on("room-joined", (validRoomId) => {
+      console.log("Joined room:", validRoomId);
+      navigate(`/room/${validRoomId}`);
+    });
+
+    socket.on("room-error", (errorMsg) => {
+      alert(`Error: ${errorMsg}`);
+    });
+
+    // Clean up event listeners on unmount
+    return () => {
+      socket.off("room-created");
+      socket.off("room-joined");
+      socket.off("room-error");
+    };
+  }, [navigate]);
 
   const handleLogout = () => {
     localStorage.removeItem("user");
@@ -22,12 +54,6 @@ function Home() {
   const handleCreateRoom = () => {
     socket.emit("create-room");
     console.log("Create Room clicked");
-
-    socket.once("room-created", (roomId) => {
-      console.log("Room created with ID:", roomId);
-      navigate(`/room/${roomId}`);
-    });
-
   };
 
   const handleJoin = () => {
@@ -37,12 +63,6 @@ function Home() {
     }
 
     socket.emit("join room", roomId.trim());
-
-    socket.once("room-joined", (validRoomId) => {
-      navigate(`/room/${validRoomId}`);
-    });
-
-    
   };
 
   return (
