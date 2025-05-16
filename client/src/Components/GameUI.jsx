@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 const EMOJIS = ['👍', '👏', '😊', '😂', '🎮', '🎯', '🕵️', '👑', '🤔', '😮'];
 
@@ -20,6 +20,9 @@ function GameUI({
   const [isReady, setIsReady] = useState(false);
   const [guessResult, setGuessResult] = useState(null);
   
+  // Refs
+  const chatContainerRef = useRef(null);
+  
   useEffect(() => {
     socket.on('game:chat', handleChatMessage);
     socket.on('game:guess-result', handleGuessResult);
@@ -31,6 +34,13 @@ function GameUI({
       socket.off('game:state');
     };
   }, [socket]);
+  
+  // Auto-scroll chat to bottom when new messages arrive
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [chatMessages]);
   
   const handleChatMessage = (data) => {
     setChatMessages(prev => [...prev, data]);
@@ -64,6 +74,11 @@ function GameUI({
   const markReady = () => {
     socket.emit('game:ready', { roomId });
     setIsReady(true);
+  };
+  
+  const startNextRound = () => {
+    socket.emit('game:next-round', { roomId });
+    setGuessResult(null);
   };
   
   const getRoleBadgeColor = (role) => {
@@ -100,9 +115,21 @@ function GameUI({
     }
   };
   
-  const startNextRound = () => {
-    socket.emit('game:next-round', { roomId });
-    setGuessResult(null);
+  const getRoleGradient = (role) => {
+    switch (role) {
+      case 'King':
+        return 'from-yellow-500 to-amber-600';
+      case 'Queen':
+        return 'from-purple-500 to-fuchsia-600';
+      case 'Police':
+        return 'from-blue-500 to-indigo-600';
+      case 'Thief':
+        return 'from-red-500 to-rose-600';
+      case 'Minister':
+        return 'from-green-500 to-emerald-600';
+      default:
+        return 'from-gray-500 to-slate-600';
+    }
   };
   
   return (
@@ -111,8 +138,8 @@ function GameUI({
       <div className="bg-gradient-to-r from-blue-900 to-purple-900 text-white p-4 rounded-t-lg flex flex-col sm:flex-row justify-between items-center shadow-lg">
         <div className="flex items-center mb-2 sm:mb-0">
           <div className="font-bold text-lg sm:text-xl mr-3">{roomId}</div>
-          <div className="flex items-center bg-blue-800 rounded-full px-3 py-1">
-            <span className="h-2 w-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
+          <div className="flex items-center bg-blue-800 bg-opacity-40 backdrop-blur-sm rounded-full px-3 py-1">
+            <span className="h-2 w-2 bg-green-500 rounded-full mr-2 animate-pulse" aria-hidden="true"></span>
             <span className="text-sm">{players.length}/5 Players</span>
           </div>
         </div>
@@ -120,14 +147,14 @@ function GameUI({
         <div className="flex flex-wrap items-center justify-center sm:justify-end gap-3">
           {isGameStarted ? (
             <div className="bg-yellow-500 text-yellow-900 font-bold px-4 py-1 rounded-full flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
               </svg>
               Round {round}/{maxRounds}
             </div>
           ) : (
-            <div className="bg-blue-600 text-white font-bold px-4 py-1 rounded-full flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1 animate-spin" viewBox="0 0 20 20" fill="currentColor">
+            <div className="bg-blue-600 bg-opacity-40 backdrop-blur-sm text-white font-bold px-4 py-1 rounded-full flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1 animate-spin" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
               </svg>
               Waiting for players...
@@ -135,8 +162,8 @@ function GameUI({
           )}
           
           {playerRole && (
-            <div className={`text-white px-4 py-1 rounded-full text-sm font-bold flex items-center ${getRoleBadgeColor(playerRole)}`}>
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+            <div className={`text-white px-4 py-1 rounded-full text-sm font-bold flex items-center bg-gradient-to-r ${getRoleGradient(playerRole)}`}>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path fillRule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v2H2v-4l4.257-4.257A6 6 0 1118 8zm-6-4a1 1 0 100 2 2 2 0 012 2 1 1 0 102 0 4 4 0 00-4-4z" clipRule="evenodd" />
               </svg>
               {playerRole}
@@ -153,8 +180,9 @@ function GameUI({
             <button 
               onClick={markReady}
               className="bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold py-3 px-8 rounded-full transition-transform transform hover:scale-105 hover:shadow-lg flex items-center"
+              aria-label="Mark yourself as ready to play"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
               I'm Ready to Play!
@@ -163,10 +191,20 @@ function GameUI({
           
           {!isGameStarted && isReady && (
             <div className="flex flex-col items-center">
-              <div className="bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold py-3 px-8 rounded-full mb-2 opacity-50">
-                Ready! Waiting for others...
+              <div className="bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold py-3 px-8 rounded-full mb-2 opacity-70">
+                <div className="flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Ready! Waiting for others...
+                </div>
               </div>
-              <div className="text-sm text-gray-600">Waiting for other players to get ready</div>
+              <div className="text-sm text-gray-600 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1 text-blue-500 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Waiting for other players to get ready
+              </div>
             </div>
           )}
           
@@ -191,8 +229,9 @@ function GameUI({
               <button 
                 onClick={startNextRound}
                 className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-bold py-3 px-8 rounded-full transition-transform transform hover:scale-105 hover:shadow-lg flex items-center mx-auto"
+                aria-label="Proceed to next round"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 Next Round
@@ -206,7 +245,7 @@ function GameUI({
                 <div>
                   <div className="text-lg font-semibold text-blue-600 mb-2">You are the Police!</div>
                   <div className="flex items-center justify-center text-gray-700 bg-blue-50 p-3 rounded">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-blue-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                       <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
                       <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
                     </svg>
@@ -221,7 +260,7 @@ function GameUI({
                   <div className="flex items-center justify-center text-gray-700 bg-gray-50 p-3 rounded">
                     {playerRole === 'Thief' ? (
                       <>
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-red-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                           <path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd" />
                           <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
                         </svg>
@@ -229,7 +268,7 @@ function GameUI({
                       </>
                     ) : (
                       <>
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-gray-500" viewBox="0 0 20 20" fill="currentColor">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-gray-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                           <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
                         </svg>
                         Watch the game unfold and interact with others
@@ -246,7 +285,7 @@ function GameUI({
         {Object.keys(scores).length > 0 && (
           <div className="mb-6 bg-white rounded-lg shadow-md overflow-hidden">
             <div className="bg-gradient-to-r from-indigo-700 to-purple-700 text-white py-2 px-4 font-bold flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
               </svg>
               Scoreboard
@@ -258,7 +297,7 @@ function GameUI({
                 return (
                   <div 
                     key={playerId} 
-                    className={`bg-gray-50 p-3 rounded-lg shadow-sm border ${isCurrentPlayer ? 'border-blue-300 bg-blue-50' : 'border-gray-200'} transition-transform transform hover:scale-105`}
+                    className={`bg-gray-50 p-3 rounded-lg shadow-sm border ${isCurrentPlayer ? 'border-blue-300 bg-blue-50' : 'border-gray-200'} transition-all duration-300 hover:shadow-md`}
                   >
                     <div className="font-medium text-gray-700 truncate">
                       {player?.username || `Player ${playerId.substring(0, 4)}`}
@@ -280,16 +319,21 @@ function GameUI({
           {/* Chat Panel */}
           <div className="flex-1 bg-white rounded-lg shadow-md overflow-hidden border border-gray-200">
             <div className="p-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z" />
                 <path d="M15 7v2a4 4 0 01-4 4H9.828l-1.766 1.767c.28.149.599.233.938.233h2l3 3v-3h2a2 2 0 002-2V9a2 2 0 00-2-2h-1z" />
               </svg>
               Game Chat
             </div>
-            <div className="h-56 overflow-y-auto p-3 bg-gray-50">
+            <div 
+              ref={chatContainerRef}
+              className="h-56 overflow-y-auto p-3 bg-gray-50 scroll-smooth"
+              aria-live="polite"
+              aria-label="Chat messages"
+            >
               {chatMessages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-gray-400 text-sm">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                   </svg>
                   No messages yet. Start the conversation!
@@ -303,8 +347,8 @@ function GameUI({
                       className={`mb-3 flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
                     >
                       <div 
-                        className={`max-w-xs rounded-lg px-4 py-2 ${isCurrentUser 
-                          ? 'bg-blue-500 text-white rounded-br-none' 
+                        className={`max-w-xs rounded-lg px-4 py-2 shadow-sm ${isCurrentUser 
+                          ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-br-none' 
                           : 'bg-gray-200 text-gray-800 rounded-bl-none'}`}
                       >
                         {!isCurrentUser && (
@@ -326,13 +370,15 @@ function GameUI({
                 onChange={(e) => setNewMessage(e.target.value)}
                 placeholder="Type a message..."
                 className="flex-1 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                aria-label="Chat message"
               />
               <button
                 type="submit"
-                className="bg-blue-500 hover:bg-blue-600 text-white px-6 transition-colors flex items-center"
+                className="bg-blue-500 hover:bg-blue-600 text-white px-6 transition-colors flex items-center disabled:bg-blue-300 disabled:cursor-not-allowed"
                 disabled={!newMessage.trim()}
+                aria-label="Send message"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                   <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
                 </svg>
               </button>
@@ -343,7 +389,7 @@ function GameUI({
           <div className="w-full lg:w-64">
             <div className="bg-white rounded-lg shadow-md overflow-hidden border border-gray-200">
               <div className="p-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-white font-semibold flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 100-2 1 1 0 000 2zm7-1a1 1 0 11-2 0 1 1 0 012 0zm-.464 5.535a1 1 0 10-1.415-1.414 3 3 0 01-4.242 0 1 1 0 00-1.415 1.414 5 5 0 007.072 0z" clipRule="evenodd" />
                 </svg>
                 Reactions
@@ -354,7 +400,8 @@ function GameUI({
                     <button
                       key={emoji}
                       onClick={() => sendEmoji(emoji)}
-                      className="text-2xl hover:bg-gray-100 p-2 rounded-full transition-all transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      className="text-2xl hover:bg-gray-100 p-2 rounded-full transition-all transform hover:scale-110 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      aria-label={`Send ${emoji} emoji`}
                     >
                       {emoji}
                     </button>
