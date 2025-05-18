@@ -112,7 +112,11 @@ function handleGameEvents(socket, io, handleWithRateLimit) {
           suspectId: result.suspectId,
           thiefId: result.thiefId,
           isCorrect: result.isCorrect,
-          scores: result.scores
+          scores: result.scores,
+          roleReveal: {
+            [result.policeId]: 'Police',
+            [result.thiefId]: 'Thief'
+          }
         });
         
         // Wait 5 seconds before prompting for next round
@@ -297,7 +301,11 @@ function handleGameEvents(socket, io, handleWithRateLimit) {
           suspectId: result.suspectId,
           thiefId: result.thiefId,
           isCorrect: result.isCorrect,
-          scores: result.scores
+          scores: result.scores,
+          roleReveal: {
+            [result.policeId]: 'Police',
+            [result.thiefId]: 'Thief'
+          }
         });
         
         // Wait 5 seconds before prompting for next round

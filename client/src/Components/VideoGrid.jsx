@@ -11,7 +11,8 @@ const VideoGrid = ({
   roundEnded, 
   players,
   playerEmojis,
-  onPlayerClick
+  onPlayerClick,
+  revealedRoles = {} // Add this prop with a default empty object
 }) => {
   // Determine grid layout based on number of players
   const getVideoGridLayout = (playerCount) => {
@@ -39,10 +40,9 @@ const VideoGrid = ({
   
   // Get player roles if they should be revealed
   const getPlayerRole = (socketId) => {
-    // No roles revealed during the game unless round ended
-    if (roundEnded || revealRoles) {
-      const player = players.find(p => p.socketId === socketId);
-      return player?.role;
+    // Use the revealedRoles object to get roles that have been revealed
+    if ((roundEnded || revealRoles) && revealedRoles[socketId]) {
+      return revealedRoles[socketId];
     }
     return null;
   };

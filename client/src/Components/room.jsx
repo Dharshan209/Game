@@ -35,6 +35,7 @@ function Room() {
   const [winners, setWinners] = useState([]);
   const [playerEmojis, setPlayerEmojis] = useState({});
   const [revealRoles, setRevealRoles] = useState(false);
+  const [revealedRoles, setRevealedRoles] = useState({});
   const [isConnectionIssue, setIsConnectionIssue] = useState(false);
   const [isLocalVideoLoaded, setIsLocalVideoLoaded] = useState(false);
   const [isRequestingMedia, setIsRequestingMedia] = useState(true);
@@ -215,6 +216,12 @@ function Room() {
   
   function handleRoleAssignment(data) {
     setPlayerRole(data.role);
+    
+    // Store your own role in the revealed roles state
+    setRevealedRoles(prevRoles => ({
+      ...prevRoles,
+      [socket.id]: data.role
+    }));
   }
   
   function handleNewRound(data) {
@@ -226,6 +233,21 @@ function Room() {
   function handleGuessResult(result) {
     setRevealRoles(true);
     setScores(result.scores);
+    
+    // Check if roleReveal is in the result, otherwise use default
+    if (result.roleReveal) {
+      setRevealedRoles(prevRoles => ({
+        ...prevRoles,
+        ...result.roleReveal
+      }));
+    } else {
+      // Fallback for older server versions
+      setRevealedRoles(prevRoles => ({
+        ...prevRoles,
+        [result.thiefId]: 'Thief',
+        [result.policeId]: 'Police'
+      }));
+    }
   }
   
   function handleRoundEnd() {
@@ -267,6 +289,18 @@ function Room() {
     const player = players.find(p => p.socketId === socketId);
     return player?.username || `Player ${socketId.substring(0, 6)}`;
   };
+  
+  // Update revealed roles when a guess result is received
+  useEffect(() => {
+    if (guessResult && (revealRoles || roundEnded)) {
+      // Store revealed roles in a separate state to maintain them across rounds
+      setRevealedRoles(prevRoles => ({
+        ...prevRoles,
+        [guessResult.thiefId]: 'Thief',
+        [guessResult.policeId]: 'Police'
+      }));
+    }
+  }, [guessResult, revealRoles, roundEnded]);
 
   // Handle room sharing
   const handleShareRoom = () => {
@@ -406,6 +440,7 @@ function Room() {
             players={players}
             playerEmojis={playerEmojis}
             onPlayerClick={handlePlayerClick}
+            revealedRoles={revealedRoles}
           />
         </div>
         
