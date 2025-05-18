@@ -103,7 +103,7 @@ function Signup() {
   };
 
   const renderStep1 = () => (
-    <div className="space-y-6 max-w-lg mx-auto">
+    <div className="space-y-5">
       <div>
         <label className="block text-blue-200 font-medium mb-2">Full Name</label>
         <input
@@ -131,7 +131,7 @@ function Signup() {
       <button
         type="button"
         onClick={nextStep}
-        className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold text-lg transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/30 hover:scale-105 active:scale-100"
+        className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/30 hover:scale-105 active:scale-100"
       >
         Continue
       </button>
@@ -139,7 +139,7 @@ function Signup() {
   );
 
   const renderStep2 = () => (
-    <div className="space-y-6 max-w-lg mx-auto">
+    <div className="space-y-5">
       <div>
         <label className="block text-blue-200 font-medium mb-2">Username</label>
         <input
@@ -180,14 +180,14 @@ function Signup() {
         <button
           type="button"
           onClick={prevStep}
-          className="w-1/3 py-4 bg-gray-700 text-white rounded-xl font-medium text-lg hover:bg-gray-600 transition-colors"
+          className="w-1/3 py-3 bg-gray-700 text-white rounded-xl font-medium hover:bg-gray-600 transition-colors"
         >
           Back
         </button>
         <button
           type="submit"
           disabled={isLoading}
-          className={`w-2/3 py-4 rounded-xl font-semibold text-lg transition-all duration-200 ${
+          className={`w-2/3 py-3 rounded-xl font-semibold transition-all duration-200 ${
             isLoading ? 'bg-indigo-700 cursor-not-allowed' : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:shadow-lg hover:shadow-indigo-500/30 hover:scale-105 active:scale-100'
           }`}
         >
@@ -208,14 +208,14 @@ function Signup() {
   );
 
   const renderSuccess = () => (
-    <div className="py-10 text-center">
-      <div className="w-20 h-20 bg-green-500 rounded-full mx-auto flex items-center justify-center mb-8 animate-pulse">
-        <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <div className="py-8 text-center">
+      <div className="w-16 h-16 bg-green-500 rounded-full mx-auto flex items-center justify-center mb-6 animate-pulse">
+        <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
         </svg>
       </div>
-      <h3 className="text-2xl font-bold text-white mb-3">Account Created Successfully!</h3>
-      <p className="text-blue-200 text-lg">Redirecting you to login...</p>
+      <h3 className="text-xl font-bold text-white mb-2">Account Created Successfully!</h3>
+      <p className="text-blue-200">Redirecting you to login...</p>
     </div>
   );
 
@@ -238,17 +238,17 @@ function Signup() {
         <p className="text-purple-200 text-lg">Join the ultimate gaming experience</p>
       </div>
       
-      {/* Signup Card - Desktop Optimized */}
-      <div className="w-full max-w-xl rounded-3xl shadow-2xl backdrop-blur-lg p-10 border border-white/10"
-           style={{ background: 'rgba(15, 23, 42, 0.6)', minHeight: '560px' }}>
+      {/* Signup Card */}
+      <div className="w-full max-w-md rounded-3xl shadow-2xl backdrop-blur-lg p-8 border border-white/10"
+           style={{ background: 'rgba(15, 23, 42, 0.6)' }}>
         
         {step < 3 && (
-          <div className="mb-8">
-            <h2 className="text-3xl font-bold text-white text-center mb-4">Create Your Account</h2>
-            <div className="flex items-center justify-center space-x-3 mb-6">
-              <div className={`w-3 h-3 rounded-full ${step >= 1 ? 'bg-indigo-500' : 'bg-gray-600'}`}></div>
-              <div className="w-12 h-0.5 bg-gray-700"></div>
-              <div className={`w-3 h-3 rounded-full ${step >= 2 ? 'bg-indigo-500' : 'bg-gray-600'}`}></div>
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-white text-center mb-2">Create Your Account</h2>
+            <div className="flex items-center justify-center space-x-2 mb-6">
+              <div className={`w-2.5 h-2.5 rounded-full ${step >= 1 ? 'bg-indigo-500' : 'bg-gray-600'}`}></div>
+              <div className="w-8 h-0.5 bg-gray-700"></div>
+              <div className={`w-2.5 h-2.5 rounded-full ${step >= 2 ? 'bg-indigo-500' : 'bg-gray-600'}`}></div>
             </div>
           </div>
         )}
@@ -267,10 +267,10 @@ function Signup() {
 
         {step < 3 && (
           <div className="mt-8 text-center">
-            <p className="text-gray-400 text-lg">Already have an account?</p>
+            <p className="text-gray-400">Already have an account?</p>
             <button
               onClick={() => navigate('/')}
-              className="mt-2 text-indigo-400 hover:text-indigo-300 transition-colors font-medium text-lg"
+              className="mt-2 text-indigo-400 hover:text-indigo-300 transition-colors font-medium"
             >
               Sign in instead
             </button>
@@ -280,7 +280,7 @@ function Signup() {
       
       {/* Terms and conditions or additional info */}
       {step < 3 && (
-        <div className="mt-8 text-center text-sm text-gray-400 max-w-lg mx-auto">
+        <div className="mt-6 text-center text-xs text-gray-400 max-w-md">
           By creating an account, you agree to our <a href="#" className="text-indigo-400 hover:text-indigo-300">Terms of Service</a> and acknowledge our <a href="#" className="text-indigo-400 hover:text-indigo-300">Privacy Policy</a>.
         </div>
       )}
