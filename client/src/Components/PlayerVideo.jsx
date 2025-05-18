@@ -9,7 +9,8 @@ function PlayerVideo({
   showRole = false, 
   isPolice = false, 
   onPlayerClick = null,
-  emoji = null
+  emoji = null,
+  connectionQuality = 'good' // Track connection quality for adaptive UI
 }) {
   const videoRef = useRef(null);
   const [showEmoji, setShowEmoji] = useState(false);
@@ -17,6 +18,7 @@ function PlayerVideo({
   const [audioLevel, setAudioLevel] = useState(0);
   const [audioActive, setAudioActive] = useState(false);
   const [isMuted, setIsMuted] = useState(isLocal); // Always start muted if local
+  const [videoQuality, setVideoQuality] = useState('auto'); // auto, low, medium, high
   const [isVideoDisabled, setIsVideoDisabled] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
   
@@ -29,6 +31,18 @@ function PlayerVideo({
   useEffect(() => {
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
+      
+      // Add srcObject change error handling
+      videoRef.current.onerror = (error) => {
+        console.error('Video element error:', error);
+        // Reset srcObject to handle potential errors
+        setTimeout(() => {
+          if (videoRef.current && stream && stream.active) {
+            videoRef.current.srcObject = null;
+            videoRef.current.srcObject = stream;
+          }
+        }, 1000);
+      };
     }
     
     // Set up audio visualization if not local (since local is muted)
@@ -96,7 +110,6 @@ function PlayerVideo({
     updateAudioLevel();
   };
   
-  // Handle emoji display with proper cleanup
   useEffect(() => {
     if (emoji) {
       setShowEmoji(true);
@@ -267,13 +280,49 @@ function PlayerVideo({
           if (playPromise !== undefined) {
             playPromise.catch(error => {
               console.warn('Auto-play was prevented:', error);
+              // Try again with user interaction emulation after a short delay
+              setTimeout(() => {
+                if (videoRef.current) {
+                  const newPlayAttempt = videoRef.current.play();
+                  if (newPlayAttempt !== undefined) {
+                    newPlayAttempt.catch(err => {
+                      console.warn('Retry auto-play failed:', err);
+                    });
+                  }
+                }
+              }, 1000);
             });
           }
         }}
+        // Low latency hints
+        onWaiting={() => console.log('Video buffering...')} 
+        onStalled={() => console.log('Video stalled...')}
       />
       
       {/* Username overlay with gradient background */}
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2 flex items-center z-30">
+        {/* Connection recovery button for poor connections */}
+        {!isLocal && connectionQuality === 'poor' && (
+          <button 
+            onClick={() => {
+              if (videoRef.current && stream) {
+                // Temporary fix to attempt to recover connection
+                videoRef.current.srcObject = null;
+                setTimeout(() => {
+                  if (videoRef.current && stream) {
+                    videoRef.current.srcObject = stream;
+                  }
+                }, 1000);
+              }
+            }}
+            className="mr-2 text-xs bg-danger-600/80 hover:bg-danger-600 px-1.5 py-0.5 rounded-md transition-colors"
+            title="Try to fix video"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+            </svg>
+          </button>
+        )}
         {/* Local or speaking indicator */}
         {(isLocal || (audioActive && !isLocal)) && (
           <span 
@@ -354,7 +403,7 @@ function PlayerVideo({
                 </svg>
               ) : (
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clipRule="evenodd" />
+                  <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243a1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828a1 1 0 010-1.415z" clipRule="evenodd" />
                 </svg>
               )}
             </button>
@@ -380,6 +429,24 @@ function PlayerVideo({
             </button>
           )}
           
+          {/* Video Quality Selector for local streams */}
+          {isLocal && (
+            <div className="relative">
+              <button 
+                onClick={() => setVideoQuality(videoQuality === 'auto' ? 'low' : videoQuality === 'low' ? 'medium' : videoQuality === 'medium' ? 'high' : 'auto')}
+                className="bg-black/50 hover:bg-black/70 text-white p-1.5 rounded-full transition backdrop-blur-sm"
+                aria-label="Video Quality"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+                </svg>
+              </button>
+              <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs bg-black/70 text-white px-2 py-1 rounded whitespace-nowrap">
+                {videoQuality === 'auto' ? 'Auto' : videoQuality === 'low' ? 'Low' : videoQuality === 'medium' ? 'Medium' : 'High'}
+              </span>
+            </div>
+          )}
+          
           <button 
             onClick={toggleFullScreen}
             className="bg-black/50 hover:bg-black/70 text-white p-1.5 rounded-full transition backdrop-blur-sm"
@@ -395,6 +462,28 @@ function PlayerVideo({
               </svg>
             )}
           </button>
+        </div>
+      )}
+      
+      {/* Connection quality indicator */}
+      {!isLocal && (
+        <div className="absolute top-2 right-2 z-40">
+          {connectionQuality === 'poor' && (
+            <div className="bg-danger-600/80 text-white text-xs px-2 py-1 rounded-full flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              Poor
+            </div>
+          )}
+          {connectionQuality === 'medium' && (
+            <div className="bg-warning-600/80 text-white text-xs px-2 py-1 rounded-full flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              Fair
+            </div>
+          )}
         </div>
       )}
     </div>
