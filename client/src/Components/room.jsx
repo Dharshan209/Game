@@ -76,7 +76,6 @@ function Room() {
     }
     
     // Periodically check if we need to reconnect to any peers
-    const reconnectionIntervalRef = useRef(null);
     reconnectionIntervalRef.current = setInterval(() => {
       if (remoteStreams.length < players.length - 1 && players.length > 1) {
         console.log('Missing some peer connections, reconnecting...');
