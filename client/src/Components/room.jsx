@@ -30,6 +30,7 @@ function Room() {
   // State
   const [playerCount, setPlayerCount] = useState(1);
   const [remoteStreams, setRemoteStreams] = useState([]);
+  const [forceUpdate, setForceUpdate] = useState(0); // Used to force component re-renders
   const [players, setPlayers] = useState([]);
   const [gameStarted, setGameStarted] = useState(false);
   const [currentRound, setCurrentRound] = useState(0);
@@ -336,6 +337,13 @@ function Room() {
     };
   }, [roomId, navigate, username]);
 
+  // Force UI updates when remoteStreams change
+  useEffect(() => {
+    console.log(`RemoteStreams updated, count: ${remoteStreams.length}`);
+    // Force a re-render to ensure the UI reflects the current state
+    setForceUpdate(prev => prev + 1);
+  }, [remoteStreams]);
+
   // Set up video stream
   useEffect(() => {
     setIsRequestingMedia(true);
@@ -517,10 +525,31 @@ function Room() {
     peer.ontrack = event => {
       console.log(`Track received from peer ${userId}`, event.streams);
       if (event.streams && event.streams[0]) {
-        setRemoteStreams(prev => [
-          ...prev.filter(s => s.id !== userId), // prevent duplicates
-          { id: userId, stream: event.streams[0] }
-        ]);
+        // Force immediate state update when track is received
+        console.log(`Adding stream for ${userId} to remoteStreams`);
+        
+        // Use a direct approach to ensure UI updates
+        setRemoteStreams(prevStreams => {
+          // Check if we already have this stream
+          const exists = prevStreams.some(s => s.id === userId);
+          
+          if (exists) {
+            console.log(`Updating existing stream for ${userId}`);
+            return prevStreams.map(s => 
+              s.id === userId ? { id: userId, stream: event.streams[0] } : s
+            );
+          } else {
+            console.log(`Adding new stream for ${userId}, total streams: ${prevStreams.length + 1}`);
+            return [...prevStreams, { id: userId, stream: event.streams[0] }];
+          }
+        });
+        
+        // Log current remote streams for debugging
+        setTimeout(() => {
+          console.log(`Current remoteStreams state after adding ${userId}:`, 
+            remoteStreams.map(s => s.id)
+          );
+        }, 500);
       } else {
         console.warn(`Received track from ${userId} but no stream was attached`);
       }
@@ -615,10 +644,31 @@ function Room() {
     peer.ontrack = event => {
       console.log(`Track received from peer ${callerId}`, event.streams);
       if (event.streams && event.streams[0]) {
-        setRemoteStreams(prev => [
-          ...prev.filter(s => s.id !== callerId), // prevent duplicates
-          { id: callerId, stream: event.streams[0] }
-        ]);
+        // Force immediate state update when track is received
+        console.log(`Adding stream for ${callerId} to remoteStreams`);
+        
+        // Use a direct approach to ensure UI updates
+        setRemoteStreams(prevStreams => {
+          // Check if we already have this stream
+          const exists = prevStreams.some(s => s.id === callerId);
+          
+          if (exists) {
+            console.log(`Updating existing stream for ${callerId}`);
+            return prevStreams.map(s => 
+              s.id === callerId ? { id: callerId, stream: event.streams[0] } : s
+            );
+          } else {
+            console.log(`Adding new stream for ${callerId}, total streams: ${prevStreams.length + 1}`);
+            return [...prevStreams, { id: callerId, stream: event.streams[0] }];
+          }
+        });
+        
+        // Log current remote streams for debugging
+        setTimeout(() => {
+          console.log(`Current remoteStreams state after adding ${callerId}:`, 
+            remoteStreams.map(s => s.id)
+          );
+        }, 500);
       } else {
         console.warn(`Received track from ${callerId} but no stream was attached`);
       }
@@ -779,10 +829,19 @@ function Room() {
     
     // Remove user's stream from state
     setRemoteStreams(prev => {
-      const filteredStreams = prev.filter(s => s.id !== userId);
-      console.log(`Removed stream for user ${userId}, remaining streams: ${filteredStreams.length}`);
-      return filteredStreams;
+      const streamExists = prev.some(s => s.id === userId);
+      if (streamExists) {
+        const filteredStreams = prev.filter(s => s.id !== userId);
+        console.log(`Removed stream for user ${userId}, remaining streams: ${filteredStreams.length}`);
+        return filteredStreams;
+      } else {
+        console.log(`No stream found for disconnected user ${userId}`);
+        return prev;
+      }
     });
+    
+    // Force update the UI to reflect the changes
+    setForceUpdate(prev => prev + 1);
   }
   
   // Find player names for remote streams
@@ -982,8 +1041,10 @@ function Room() {
           )}
           
           {/* Responsive Video Grid - 2 videos per row */}
-          <div className={`grid ${getVideoGridLayout(remoteStreams.length + 1)} gap-6`}>
+          <div className={`grid ${getVideoGridLayout(remoteStreams.length + 1)} gap-6`} key={`video-grid-${forceUpdate}`}>
             {/* Create an array with local video first, followed by all remote videos */}
+            {/* Force log to debug how many videos are being rendered */}
+            {console.log(`Rendering video grid with ${remoteStreams.length + 1} videos (including local). Remote IDs:`, remoteStreams.map(s => s.id))}
             {[{
               id: socket.id,
               stream: localStreamRef.current ? new MediaStream(localStreamRef.current.getTracks()) : null,
@@ -991,14 +1052,17 @@ function Room() {
               username: `${username} (You)`,
               role: playerRole,
               showRole: true
-            }, ...remoteStreams.map(({ id, stream }) => ({
-              id,
-              stream,
-              isLocal: false,
-              username: getPlayerName(id),
-              role: getPlayerRole(id),
-              showRole: revealRoles
-            }))].map(({ id, stream, isLocal, username, role, showRole }) => (
+            }, ...remoteStreams.map(({ id, stream }) => {
+              console.log(`Including remote stream for ${id} in video grid`);
+              return {
+                id,
+                stream,
+                isLocal: false,
+                username: getPlayerName(id),
+                role: getPlayerRole(id),
+                showRole: revealRoles
+              };
+            })].map(({ id, stream, isLocal, username, role, showRole }) => (
               <div 
                 key={id} 
                 className={`relative h-[220px] sm:h-[260px] md:h-[280px] lg:h-[320px] aspect-video ${!isLocal && playerRole === 'Police' && !roundEnded ? 'cursor-pointer transform hover:scale-102 transition-transform duration-200' : ''}`}
