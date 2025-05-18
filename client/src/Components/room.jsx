@@ -289,15 +289,14 @@ function Room() {
       </div>
 
       {/* WebRTC Connection Management */}
-      <WebRTCConnection
-        ref={webRTCRef}
-        socket={socket}
-        roomId={roomId}
-        localStreamRef={localStreamRef}
-        onRemoteStreamUpdate={setRemoteStreams}
-        onConnectionStatus={handleConnectionStatus}
-        username={username}
-      />
+      {webRTCRef.current = WebRTCConnection({
+        socket,
+        roomId,
+        localStreamRef,
+        onRemoteStreamUpdate: setRemoteStreams,
+        onConnectionStatus: handleConnectionStatus,
+        username
+      })}
 
       {/* Connection Status Notifications */}
       <ConnectionStatus
