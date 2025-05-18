@@ -41,6 +41,8 @@ function Room() {
   const [winners, setWinners] = useState([]);
   const [playerEmojis, setPlayerEmojis] = useState({});
   const [revealRoles, setRevealRoles] = useState(false);
+  const [revealedRoles, setRevealedRoles] = useState({});
+  const [guessResult, setGuessResult] = useState(null);
   const [isConnectionIssue, setIsConnectionIssue] = useState(false);
   const [isLocalVideoLoaded, setIsLocalVideoLoaded] = useState(false);
   const [isRequestingMedia, setIsRequestingMedia] = useState(true);
