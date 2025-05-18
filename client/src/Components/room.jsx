@@ -75,11 +75,38 @@ function Room() {
       hasJoinedRef.current = true;
     }
     
-    // Periodically check if we need to reconnect to any peers
+    // Function to regularly request latest users list
+    const requestRoomUsers = () => {
+      socket.emit('room:get-users', roomId);
+      console.log('Requested updated room users list');
+    };
+    
+    // Periodically check if we need to reconnect to any peers (run frequently at first, then less often)
+    // First, request user list immediately after joining
+    const timeout1 = setTimeout(requestRoomUsers, 1000); 
+    const timeout2 = setTimeout(requestRoomUsers, 2000);
+    const timeout3 = setTimeout(requestRoomUsers, 4000);
+    
+    // Then set up periodic checks
     reconnectionIntervalRef.current = setInterval(() => {
+      // Always request users list periodically to ensure all connections are established
+      requestRoomUsers();
+      
+      // Check if we're missing any streams
       if (remoteStreams.length < players.length - 1 && players.length > 1) {
-        console.log('Missing some peer connections, reconnecting...');
-        socket.emit('room:get-users', roomId);
+        console.log('Missing some peer connections, detected inconsistency:', {
+          remoteStreams: remoteStreams.length,
+          players: players.length,
+          expectedConnections: players.length - 1
+        });
+        
+        // Force reconnection to any peers we're not connected to
+        players.forEach(player => {
+          if (player.socketId !== socket.id && !peersRef.current[player.socketId]) {
+            console.log(`Missing connection to player: ${player.username} (${player.socketId})`);
+            callUser(player.socketId);
+          }
+        });
       }
     }, 5000);
     
@@ -236,6 +263,11 @@ function Room() {
       if (reconnectionIntervalRef.current) {
         clearInterval(reconnectionIntervalRef.current);
       }
+      
+      // Clear timeouts
+      clearTimeout(timeout1);
+      clearTimeout(timeout2);
+      clearTimeout(timeout3);
     };
   }, [roomId, navigate, username]);
 
@@ -278,6 +310,17 @@ function Room() {
     
     if (state.scores !== undefined) {
       setScores(state.scores);
+    }
+    
+    // When game state updates, check if we need to establish any missing connections
+    if (state.players && state.players.length > 0) {
+      // Check for missing connections
+      state.players.forEach(player => {
+        if (player.socketId !== socket.id && !peersRef.current[player.socketId]) {
+          console.log(`Game state update: Missing connection to player: ${player.username} (${player.socketId})`);
+          callUser(player.socketId);
+        }
+      });
     }
   }
   
@@ -340,16 +383,48 @@ function Room() {
 
   // WebRTC functions
   function callUser(userId) {
+    // Skip if trying to call self
+    if (userId === socket.id) {
+      console.log('Ignoring attempt to call self');
+      return;
+    }
+    
+    // Check if connection already exists and is in good state
+    if (peersRef.current[userId]) {
+      const existingPeer = peersRef.current[userId];
+      const connectionState = existingPeer.connectionState || existingPeer.iceConnectionState;
+      
+      // Only proceed if connection is in a bad state
+      if (!['disconnected', 'failed', 'closed'].includes(connectionState)) {
+        console.log(`Already have good connection to ${userId} in state: ${connectionState}`);
+        return;
+      }
+      
+      // Clean up bad connection before creating a new one
+      console.log(`Closing bad connection to ${userId} in state: ${connectionState}`);
+      existingPeer.close();
+      delete peersRef.current[userId];
+    }
+    
+    console.log(`Creating new RTCPeerConnection to ${userId}`);
     const peer = new RTCPeerConnection(ICE_SERVERS);
     peersRef.current[userId] = peer;
 
-    // Add connection state monitoring
+    // Add connection state monitoring with improved handling
     peer.onconnectionstatechange = () => {
       console.log(`Connection state change for peer ${userId}: ${peer.connectionState}`);
+      if (['disconnected', 'failed', 'closed'].includes(peer.connectionState)) {
+        console.log(`Peer connection to ${userId} is in bad state: ${peer.connectionState}`);
+        // Will be handled by the reconnection interval
+      }
     };
     
     peer.oniceconnectionstatechange = () => {
       console.log(`ICE connection state change for peer ${userId}: ${peer.iceConnectionState}`);
+      if (['disconnected', 'failed', 'closed'].includes(peer.iceConnectionState)) {
+        console.log(`ICE connection to ${userId} is in bad state: ${peer.iceConnectionState}`);
+        // Will be handled by the reconnection interval
+      }
     };
     
     peer.onicegatheringstatechange = () => {
@@ -360,23 +435,36 @@ function Room() {
       console.log(`Signaling state change for peer ${userId}: ${peer.signalingState}`);
     };
 
+    // Add local tracks to the peer connection
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        peer.addTrack(track, localStreamRef.current);
-      });
+      try {
+        localStreamRef.current.getTracks().forEach(track => {
+          peer.addTrack(track, localStreamRef.current);
+        });
+      } catch (err) {
+        console.error(`Error adding tracks to peer ${userId}:`, err);
+      }
+    } else {
+      console.warn(`No local stream available when calling ${userId}`);
     }
 
+    // Handle incoming tracks (remote video)
     peer.ontrack = event => {
       console.log(`Track received from peer ${userId}`, event.streams);
-      setRemoteStreams(prev => [
-        ...prev.filter(s => s.id !== userId), // prevent duplicates
-        { id: userId, stream: event.streams[0] }
-      ]);
+      if (event.streams && event.streams[0]) {
+        setRemoteStreams(prev => [
+          ...prev.filter(s => s.id !== userId), // prevent duplicates
+          { id: userId, stream: event.streams[0] }
+        ]);
+      } else {
+        console.warn(`Received track from ${userId} but no stream was attached`);
+      }
     };
 
+    // Handle ICE candidates
     peer.onicecandidate = event => {
       if (event.candidate) {
-        console.log(`Sending ICE candidate to peer ${userId}`, event.candidate);
+        console.log(`Sending ICE candidate to peer ${userId}`);
         socket.emit('ice-candidate', {
           target: userId,
           candidate: event.candidate
@@ -384,29 +472,48 @@ function Room() {
       }
     };
 
+    // Create and send the offer
     peer.createOffer().then(offer => {
-      peer.setLocalDescription(offer);
+      return peer.setLocalDescription(offer);
+    }).then(() => {
+      console.log(`Sending offer to ${userId}`);
       socket.emit('offer', {
         target: userId,
         callerId: socket.id,
-        sdp: offer
+        sdp: peer.localDescription
       });
     }).catch(err => {
-      console.error("Error creating offer:", err);
+      console.error(`Error creating/sending offer to ${userId}:`, err);
     });
   }
 
   function handleReceiveOffer({ callerId, sdp }) {
+    // Check if connection already exists and close it
+    if (peersRef.current[callerId]) {
+      console.log(`Closing existing peer connection for new offer from ${callerId}`);
+      peersRef.current[callerId].close();
+      delete peersRef.current[callerId];
+    }
+    
+    console.log(`Creating new peer connection for offer from ${callerId}`);
     const peer = new RTCPeerConnection(ICE_SERVERS);
     peersRef.current[callerId] = peer;
     
-    // Add connection state monitoring
+    // Add connection state monitoring with improved handling
     peer.onconnectionstatechange = () => {
       console.log(`Connection state change for peer ${callerId}: ${peer.connectionState}`);
+      if (['disconnected', 'failed', 'closed'].includes(peer.connectionState)) {
+        console.log(`Peer connection to ${callerId} is in bad state: ${peer.connectionState}`);
+        // Will be handled by the reconnection interval
+      }
     };
     
     peer.oniceconnectionstatechange = () => {
       console.log(`ICE connection state change for peer ${callerId}: ${peer.iceConnectionState}`);
+      if (['disconnected', 'failed', 'closed'].includes(peer.iceConnectionState)) {
+        console.log(`ICE connection to ${callerId} is in bad state: ${peer.iceConnectionState}`);
+        // Will be handled by the reconnection interval
+      }
     };
     
     peer.onicegatheringstatechange = () => {
@@ -417,23 +524,36 @@ function Room() {
       console.log(`Signaling state change for peer ${callerId}: ${peer.signalingState}`);
     };
 
+    // Add local tracks to the peer connection
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        peer.addTrack(track, localStreamRef.current);
-      });
+      try {
+        localStreamRef.current.getTracks().forEach(track => {
+          peer.addTrack(track, localStreamRef.current);
+        });
+      } catch (err) {
+        console.error(`Error adding tracks to peer ${callerId}:`, err);
+      }
+    } else {
+      console.warn(`No local stream available when answering ${callerId}`);
     }
 
+    // Handle incoming tracks (remote video)
     peer.ontrack = event => {
       console.log(`Track received from peer ${callerId}`, event.streams);
-      setRemoteStreams(prev => [
-        ...prev.filter(s => s.id !== callerId),
-        { id: callerId, stream: event.streams[0] }
-      ]);
+      if (event.streams && event.streams[0]) {
+        setRemoteStreams(prev => [
+          ...prev.filter(s => s.id !== callerId), // prevent duplicates
+          { id: callerId, stream: event.streams[0] }
+        ]);
+      } else {
+        console.warn(`Received track from ${callerId} but no stream was attached`);
+      }
     };
 
+    // Handle ICE candidates
     peer.onicecandidate = event => {
       if (event.candidate) {
-        console.log(`Sending ICE candidate to peer ${callerId}`, event.candidate);
+        console.log(`Sending ICE candidate to peer ${callerId}`);
         socket.emit('ice-candidate', {
           target: callerId,
           candidate: event.candidate
@@ -441,32 +561,44 @@ function Room() {
       }
     };
 
+    // Accept the offer and send an answer
     peer.setRemoteDescription(new RTCSessionDescription(sdp)).then(() => {
+      console.log(`Remote description set for peer ${callerId}, creating answer`);
       return peer.createAnswer();
     }).then(answer => {
-      peer.setLocalDescription(answer);
+      console.log(`Setting local description for peer ${callerId}`);
+      return peer.setLocalDescription(answer).then(() => answer);
+    }).then(answer => {
+      console.log(`Sending answer to ${callerId}`);
       socket.emit('answer', {
         target: callerId,
         sdp: answer
       });
     }).catch(err => {
-      console.error("Error handling offer:", err);
+      console.error(`Error handling offer from ${callerId}:`, err);
     });
   }
 
   function handleAnswer({ callerId, sdp }) {
     const peer = peersRef.current[callerId];
     if (peer) {
-      peer.setRemoteDescription(new RTCSessionDescription(sdp)).catch(err => {
-        console.error("Error setting remote description:", err);
-      });
+      console.log(`Received answer from ${callerId}, setting remote description`);
+      peer.setRemoteDescription(new RTCSessionDescription(sdp))
+        .then(() => {
+          console.log(`Successfully set remote description for peer ${callerId}`);
+        })
+        .catch(err => {
+          console.error(`Error setting remote description for peer ${callerId}:`, err);
+        });
+    } else {
+      console.warn(`Received answer from ${callerId} but no peer connection exists`);
     }
   }
 
   function handleNewICECandidate({ target, candidate }) {
     const peer = peersRef.current[target];
     if (peer) {
-      console.log(`Received ICE candidate for peer ${target}`, candidate);
+      console.log(`Received ICE candidate for peer ${target}`);
       
       // Only add ICE candidate if we have a remote description
       if (peer.remoteDescription && peer.remoteDescription.type) {
@@ -478,7 +610,18 @@ function Room() {
             console.error(`Error adding ICE candidate for peer ${target}:`, err);
           });
       } else {
-        console.warn(`Skipping ICE candidate as remote description not set for peer ${target}`);
+        // Queue the candidate for later when remote description is set
+        console.warn(`Remote description not yet set for peer ${target}, queuing ICE candidate`);
+        setTimeout(() => {
+          // Try again after a small delay
+          if (peersRef.current[target] && peersRef.current[target].remoteDescription) {
+            peersRef.current[target].addIceCandidate(new RTCIceCandidate(candidate))
+              .then(() => console.log(`Added delayed ICE candidate for peer ${target}`))
+              .catch(err => console.error(`Error adding delayed ICE candidate: ${err}`));
+          } else {
+            console.warn(`Still unable to add ICE candidate for peer ${target} after delay`);
+          }
+        }, 1000);
       }
     } else {
       console.error(`Received ICE candidate for unknown peer ${target}`);
