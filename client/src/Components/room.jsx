@@ -4,7 +4,7 @@ import socket from '../utils/socket';
 import PlayerVideo from './PlayerVideo';
 import GameUI from './GameUI';
 import GameInstructions from './GameInstructions';
-import WebRTCConnection from './WebRTCConnection';
+import createWebRTCConnection from './WebRTCConnection';
 import VideoGrid from './VideoGrid';
 import ConnectionStatus from './ConnectionStatus';
 import { RoleBanner } from './RoleUtils';
@@ -95,6 +95,17 @@ function Room() {
         
         setIsLocalVideoLoaded(true);
         setIsRequestingMedia(false);
+        
+        // Initialize the WebRTC connection
+        const connection = WebRTCConnection({
+          socket,
+          roomId,
+          localStreamRef,
+          onRemoteStreamUpdate: setRemoteStreams,
+          onConnectionStatus: handleConnectionStatus,
+          username
+        });
+        webRTCRef.current = connection;
       })
       .catch(error => {
         console.error('Error accessing media devices:', error);
@@ -111,6 +122,17 @@ function Room() {
               setIsLocalVideoLoaded(true);
               setIsRequestingMedia(false);
               setMediaError("Video unavailable. Audio-only mode activated.");
+              
+              // Initialize WebRTC with audio-only stream
+              const connection = WebRTCConnection({
+                socket,
+                roomId,
+                localStreamRef,
+                onRemoteStreamUpdate: setRemoteStreams,
+                onConnectionStatus: handleConnectionStatus,
+                username
+              });
+              webRTCRef.current = connection;
             })
             .catch(audioError => {
               console.error('Error accessing audio devices:', audioError);
@@ -119,7 +141,7 @@ function Room() {
             });
         }
       });
-  }, []);
+  }, [roomId, socket, username]);
   
   // Game-related event handlers
   useEffect(() => {
@@ -288,15 +310,6 @@ function Room() {
            style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'40\' height=\'40\' viewBox=\'0 0 40 40\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.4\' fill-rule=\'evenodd\'%3E%3Cpath d=\'M0 40L40 0H20L0 20M40 40V20L20 40\'/%3E%3C/g%3E%3C/svg%3E")' }}>
       </div>
 
-      {/* WebRTC Connection Management */}
-      {webRTCRef.current = WebRTCConnection({
-        socket,
-        roomId,
-        localStreamRef,
-        onRemoteStreamUpdate: setRemoteStreams,
-        onConnectionStatus: handleConnectionStatus,
-        username
-      })}
 
       {/* Connection Status Notifications */}
       <ConnectionStatus

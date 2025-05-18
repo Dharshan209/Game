@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import React from 'react';
 
 // WebRTC configuration with STUN/TURN servers
 const ICE_SERVERS = {
@@ -26,22 +26,23 @@ const ICE_SERVERS = {
   rtcpMuxPolicy: 'require'
 };
 
-const WebRTCConnection = ({ 
+// Regular function without hooks
+function createWebRTCConnection({ 
   socket, 
   roomId, 
   localStreamRef, 
   onRemoteStreamUpdate, 
   onConnectionStatus, 
   username 
-}) => {
-  // Refs
-  const hasJoinedRef = useRef(false);
-  const hasSetupGameRef = useRef(false);
-  const peersRef = useRef({});
-  const connectionCheckIntervalRef = useRef(null);
+}) {
+  // Refs as plain objects
+  const hasJoinedRef = { current: false };
+  const hasSetupGameRef = { current: false };
+  const peersRef = { current: {} };
+  const connectionCheckIntervalRef = { current: null };
   
-  // Join room and set up socket listeners
-  useEffect(() => {
+  // Setup event listeners and join room function
+  function setupConnection() {
     console.log(`Attempting to join room: ${roomId}`);
     
     // Join the room
@@ -114,7 +115,8 @@ const WebRTCConnection = ({
       onConnectionStatus({ isConnectionIssue: hasActiveConnections && allDisconnected });
     }, 5000);
 
-    return () => {
+    // Return cleanup function
+    return function cleanup() {
       // Leave room
       socket.emit('leave room', roomId);
       
@@ -143,7 +145,10 @@ const WebRTCConnection = ({
         clearInterval(connectionCheckIntervalRef.current);
       }
     };
-  }, [roomId, socket, onRemoteStreamUpdate, onConnectionStatus, username, localStreamRef]);
+  }
+  
+  // Call setup immediately
+  setupConnection();
 
   // WebRTC functions
   function callUser(userId) {
@@ -709,4 +714,16 @@ const WebRTCConnection = ({
   };
 };
 
-export default WebRTCConnection;
+// Create a React component wrapper that uses our utility function
+const WebRTCConnection = (props) => {
+  // Use React.useEffect to initialize once
+  React.useEffect(() => {
+    // This is just a dummy component that doesn't render anything
+  }, []);
+  
+  // Return null as we don't actually render anything
+  return null;
+};
+
+// Export both the component (for compatibility) and the function
+export default createWebRTCConnection;
