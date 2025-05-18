@@ -497,13 +497,15 @@ function Room() {
       case 2:
         return 'grid-cols-1 md:grid-cols-2';
       case 3:
-        return 'grid-cols-1 md:grid-cols-3';
+        return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3';
       case 4:
-        return 'grid-cols-2 md:grid-cols-2';
+        return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-4';
       case 5:
-        return 'grid-cols-2 md:grid-cols-3';
+        return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5';
+      case 6:
+        return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3';
       default:
-        return 'grid-cols-2 md:grid-cols-3';
+        return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4';
     }
   };
 
@@ -685,36 +687,37 @@ function Room() {
           
           {/* Responsive Video Grid */}
           <div className={`grid ${getVideoGridLayout(remoteStreams.length + 1)} gap-5`}>
-            {/* Local Video - Always shown first and highlighted */}
-            <div className="relative h-[260px] md:h-[300px]">
-              <PlayerVideo
-                stream={localStreamRef.current ? new MediaStream(localStreamRef.current.getTracks()) : null}
-                username={`${username} (You)`}
-                id={socket.id}
-                isLocal={true}
-                role={playerRole}
-                showRole={true} // Always show your own role
-                emoji={playerEmojis[socket.id]}
-              />
-            </div>
-
-            {/* Remote Videos - With clear labeling and interactive elements */}
-            {remoteStreams.map(({ id, stream }) => (
+            {/* Create an array with local video first, followed by all remote videos */}
+            {[{
+              id: socket.id,
+              stream: localStreamRef.current ? new MediaStream(localStreamRef.current.getTracks()) : null,
+              isLocal: true,
+              username: `${username} (You)`,
+              role: playerRole,
+              showRole: true
+            }, ...remoteStreams.map(({ id, stream }) => ({
+              id,
+              stream,
+              isLocal: false,
+              username: getPlayerName(id),
+              role: getPlayerRole(id),
+              showRole: revealRoles
+            }))].map(({ id, stream, isLocal, username, role, showRole }) => (
               <div 
                 key={id} 
-                className={`relative h-[260px] md:h-[300px] ${playerRole === 'Police' && !roundEnded ? 'cursor-pointer transform hover:scale-102 transition-transform duration-200' : ''}`}
-                onClick={() => playerRole === 'Police' && !roundEnded ? handlePlayerClick(id) : null}
+                className={`relative h-[200px] sm:h-[220px] md:h-[260px] lg:h-[300px] aspect-video ${!isLocal && playerRole === 'Police' && !roundEnded ? 'cursor-pointer transform hover:scale-102 transition-transform duration-200' : ''}`}
+                onClick={() => !isLocal && playerRole === 'Police' && !roundEnded ? handlePlayerClick(id) : null}
               >
                 <PlayerVideo
                   stream={stream}
-                  username={getPlayerName(id)}
+                  username={username}
                   id={id}
-                  isLocal={false}
-                  role={getPlayerRole(id)}
-                  showRole={revealRoles}
+                  isLocal={isLocal}
+                  role={isLocal ? role : getPlayerRole(id)}
+                  showRole={isLocal || revealRoles}
                   emoji={playerEmojis[id]}
-                  isPolice={playerRole === 'Police' && !roundEnded}
-                  onPlayerClick={handlePlayerClick}
+                  isPolice={!isLocal && playerRole === 'Police' && !roundEnded}
+                  onPlayerClick={!isLocal ? handlePlayerClick : null}
                 />
               </div>
             ))}
