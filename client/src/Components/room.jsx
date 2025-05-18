@@ -58,6 +58,7 @@ function Room() {
   const peersRef = useRef({}); // key: socketId, value: RTCPeerConnection
   const connectionCheckIntervalRef = useRef(null);
   const reconnectionIntervalRef = useRef(null);
+  const iceCandidateBufferRef = useRef({}); // Buffer for ICE candidates received before remote description is set
 
   // Join room and set up socket listeners
   useEffect(() => {
@@ -125,8 +126,15 @@ function Room() {
         });
         hasSetupGameRef.current = true;
         
-        // Get users in room
-        socket.emit('room:get-users', joinedRoomId);
+        // Emit a media-ready event once local stream is ready
+        const checkMediaReady = setInterval(() => {
+          if (localStreamRef.current) {
+            clearInterval(checkMediaReady);
+            console.log('Local media stream is ready, requesting room users');
+            // Get users in room
+            socket.emit('room:get-users', joinedRoomId);
+          }
+        }, 500);
       }
     }
     
@@ -165,11 +173,29 @@ function Room() {
     
     function handleUserJoined(userId) {
       console.log(`New user joined: ${userId}`);
-      // When a new user joins, initiate a connection to them
-      if (!peersRef.current[userId]) {
-        console.log(`Initiating connection to new user: ${userId}`);
-        callUser(userId);
-      }
+      
+      // Give the new user a moment to set up their media before we try to connect
+      setTimeout(() => {
+        // When a new user joins, initiate a connection to them
+        if (!peersRef.current[userId]) {
+          console.log(`Initiating connection to new user with delay: ${userId}`);
+          
+          // Only call if our local stream is ready
+          if (localStreamRef.current) {
+            callUser(userId);
+          } else {
+            // Wait for local stream to be ready before calling
+            console.log(`Waiting for local stream before calling ${userId}`);
+            const waitForLocalStream = setInterval(() => {
+              if (localStreamRef.current) {
+                clearInterval(waitForLocalStream);
+                console.log(`Local stream ready, now calling ${userId}`);
+                callUser(userId);
+              }
+            }, 500);
+          }
+        }
+      }, 2000); // Give the new user 2 seconds to set up
     }
     
     function handleRoomError(msg) {
@@ -181,11 +207,46 @@ function Room() {
       }
     }
     
+    // Add a handler for the new initiate-connection event
+    function handleInitiateConnection(userId) {
+      console.log(`Received request to initiate connection with ${userId}`);
+      // Make sure we have our local media stream ready
+      if (localStreamRef.current) {
+        // Check if we already have a connection to this user
+        if (!peersRef.current[userId]) {
+          console.log(`Initiating bidirectional connection to user: ${userId}`);
+          callUser(userId);
+        } else {
+          console.log(`Already have a connection to ${userId}, checking if it needs repair`);
+          const peer = peersRef.current[userId];
+          if (['disconnected', 'failed', 'closed'].includes(peer.connectionState || peer.iceConnectionState)) {
+            console.log(`Connection to ${userId} needs repair, reconnecting`);
+            peer.close();
+            delete peersRef.current[userId];
+            callUser(userId);
+          }
+        }
+      } else {
+        console.log(`Cannot initiate connection with ${userId} yet, waiting for local stream`);
+        // Delay the connection attempt until local stream is ready
+        const checkInterval = setInterval(() => {
+          if (localStreamRef.current) {
+            clearInterval(checkInterval);
+            if (!peersRef.current[userId]) {
+              console.log(`Local stream now ready, initiating delayed connection to ${userId}`);
+              callUser(userId);
+            }
+          }
+        }, 500);
+      }
+    }
+    
     // WebRTC events
     socket.on('room-joined', handleRoomJoined);
     socket.on('player-count', handlePlayerCount);
     socket.on('all users', handleAllUsers);
     socket.on('user-joined', handleUserJoined); 
+    socket.on('initiate-connection', handleInitiateConnection);
     socket.on('offer', handleReceiveOffer);
     socket.on('answer', handleAnswer);
     socket.on('ice-candidate', handleNewICECandidate);
@@ -228,6 +289,7 @@ function Room() {
       socket.off('player-count');
       socket.off('all users');
       socket.off('user-joined');
+      socket.off('initiate-connection');
       socket.off('offer');
       socket.off('answer');
       socket.off('ice-candidate');
@@ -255,6 +317,9 @@ function Room() {
         peer.close();
       });
       peersRef.current = {};
+      
+      // Clear ICE candidate buffer
+      iceCandidateBufferRef.current = {};
 
       // Clear intervals
       if (connectionCheckIntervalRef.current) {
@@ -472,11 +537,20 @@ function Room() {
       }
     };
 
+    // Check if we have any buffered ICE candidates for this peer
+    if (iceCandidateBufferRef.current[userId] && iceCandidateBufferRef.current[userId].length > 0) {
+      console.log(`Found ${iceCandidateBufferRef.current[userId].length} buffered ICE candidates for ${userId}`);
+    }
+    
     // Create and send the offer
-    peer.createOffer().then(offer => {
+    peer.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: true
+    }).then(offer => {
+      console.log(`Created offer for ${userId}, setting local description`);
       return peer.setLocalDescription(offer);
     }).then(() => {
-      console.log(`Sending offer to ${userId}`);
+      console.log(`Local description set for ${userId}, sending offer`);
       socket.emit('offer', {
         target: userId,
         callerId: socket.id,
@@ -564,7 +638,26 @@ function Room() {
     // Accept the offer and send an answer
     peer.setRemoteDescription(new RTCSessionDescription(sdp)).then(() => {
       console.log(`Remote description set for peer ${callerId}, creating answer`);
-      return peer.createAnswer();
+      
+      // Process any buffered ICE candidates for this peer
+      if (iceCandidateBufferRef.current[callerId] && iceCandidateBufferRef.current[callerId].length > 0) {
+        console.log(`Processing ${iceCandidateBufferRef.current[callerId].length} buffered ICE candidates for peer ${callerId}`);
+        
+        const candidates = [...iceCandidateBufferRef.current[callerId]];
+        iceCandidateBufferRef.current[callerId] = [];
+        
+        // Add all buffered candidates
+        candidates.forEach(bufferedCandidate => {
+          peer.addIceCandidate(new RTCIceCandidate(bufferedCandidate))
+            .then(() => console.log(`Added buffered ICE candidate for peer ${callerId}`))
+            .catch(err => console.error(`Error adding buffered ICE candidate: ${err}`));
+        });
+      }
+      
+      return peer.createAnswer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true
+      });
     }).then(answer => {
       console.log(`Setting local description for peer ${callerId}`);
       return peer.setLocalDescription(answer).then(() => answer);
@@ -586,6 +679,21 @@ function Room() {
       peer.setRemoteDescription(new RTCSessionDescription(sdp))
         .then(() => {
           console.log(`Successfully set remote description for peer ${callerId}`);
+          
+          // Process any buffered ICE candidates for this peer
+          if (iceCandidateBufferRef.current[callerId] && iceCandidateBufferRef.current[callerId].length > 0) {
+            console.log(`Processing ${iceCandidateBufferRef.current[callerId].length} buffered ICE candidates for peer ${callerId}`);
+            
+            const candidates = [...iceCandidateBufferRef.current[callerId]];
+            iceCandidateBufferRef.current[callerId] = [];
+            
+            // Add all buffered candidates
+            candidates.forEach(bufferedCandidate => {
+              peer.addIceCandidate(new RTCIceCandidate(bufferedCandidate))
+                .then(() => console.log(`Added buffered ICE candidate for peer ${callerId}`))
+                .catch(err => console.error(`Error adding buffered ICE candidate: ${err}`));
+            });
+          }
         })
         .catch(err => {
           console.error(`Error setting remote description for peer ${callerId}:`, err);
@@ -596,12 +704,15 @@ function Room() {
   }
 
   function handleNewICECandidate({ target, candidate }) {
+    // Get the peer connection, if it exists
     const peer = peersRef.current[target];
+    
     if (peer) {
       console.log(`Received ICE candidate for peer ${target}`);
       
-      // Only add ICE candidate if we have a remote description
+      // Check if we have a remote description set
       if (peer.remoteDescription && peer.remoteDescription.type) {
+        // We have a remote description, add the candidate immediately
         peer.addIceCandidate(new RTCIceCandidate(candidate))
           .then(() => {
             console.log(`Successfully added ICE candidate for peer ${target}`);
@@ -610,21 +721,50 @@ function Room() {
             console.error(`Error adding ICE candidate for peer ${target}:`, err);
           });
       } else {
-        // Queue the candidate for later when remote description is set
-        console.warn(`Remote description not yet set for peer ${target}, queuing ICE candidate`);
-        setTimeout(() => {
-          // Try again after a small delay
-          if (peersRef.current[target] && peersRef.current[target].remoteDescription) {
-            peersRef.current[target].addIceCandidate(new RTCIceCandidate(candidate))
-              .then(() => console.log(`Added delayed ICE candidate for peer ${target}`))
-              .catch(err => console.error(`Error adding delayed ICE candidate: ${err}`));
-          } else {
-            console.warn(`Still unable to add ICE candidate for peer ${target} after delay`);
-          }
-        }, 1000);
+        // No remote description yet, buffer the candidate
+        console.warn(`Remote description not yet set for peer ${target}, buffering ICE candidate`);
+        
+        // Initialize the buffer for this peer if it doesn't exist
+        if (!iceCandidateBufferRef.current[target]) {
+          iceCandidateBufferRef.current[target] = [];
+        }
+        
+        // Add the candidate to the buffer
+        iceCandidateBufferRef.current[target].push(candidate);
+        console.log(`Buffered ICE candidate for peer ${target}, buffer size: ${iceCandidateBufferRef.current[target].length}`);
+        
+        // Set up a handler to process buffered candidates when remote description is set
+        const originalSetRemoteDescription = peer.setRemoteDescription.bind(peer);
+        peer.setRemoteDescription = function(desc) {
+          return originalSetRemoteDescription(desc).then(() => {
+            // Process any buffered candidates after remote description is set
+            if (iceCandidateBufferRef.current[target] && iceCandidateBufferRef.current[target].length > 0) {
+              console.log(`Processing ${iceCandidateBufferRef.current[target].length} buffered ICE candidates for peer ${target}`);
+              
+              const candidates = [...iceCandidateBufferRef.current[target]];
+              iceCandidateBufferRef.current[target] = [];
+              
+              // Add all buffered candidates
+              return Promise.all(candidates.map(bufferedCandidate => {
+                return peer.addIceCandidate(new RTCIceCandidate(bufferedCandidate))
+                  .then(() => console.log(`Added buffered ICE candidate for peer ${target}`))
+                  .catch(err => console.error(`Error adding buffered ICE candidate: ${err}`));
+              }));
+            }
+            return Promise.resolve();
+          });
+        };
       }
     } else {
-      console.error(`Received ICE candidate for unknown peer ${target}`);
+      // We haven't created a peer connection for this target yet
+      console.warn(`Received ICE candidate for unknown peer ${target}, buffering for later`);
+      
+      // Buffer the candidate for when we create the peer
+      if (!iceCandidateBufferRef.current[target]) {
+        iceCandidateBufferRef.current[target] = [];
+      }
+      
+      iceCandidateBufferRef.current[target].push(candidate);
     }
   }
 
@@ -660,9 +800,9 @@ function Room() {
     return null;
   };
 
-  // Fixed grid layout with 3 videos per row on desktop
+  // Fixed grid layout with 2 videos per row on all screen sizes
   const getVideoGridLayout = () => {
-    return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3';
+    return 'grid-cols-1 sm:grid-cols-2';
   };
 
   // Handle room sharing
@@ -803,7 +943,7 @@ function Room() {
         />
         
         {/* Video Grid Container */}
-        <div className="mt-6 bg-white/10 backdrop-blur-md rounded-2xl shadow-lg p-5 border border-white/20">
+        <div className="mt-6 bg-white/10 backdrop-blur-md rounded-2xl shadow-lg p-6 border border-white/20">
           <h2 className="text-xl font-bold text-white mb-5 flex items-center">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -841,8 +981,8 @@ function Room() {
             </div>
           )}
           
-          {/* Responsive Video Grid */}
-          <div className={`grid ${getVideoGridLayout(remoteStreams.length + 1)} gap-5`}>
+          {/* Responsive Video Grid - 2 videos per row */}
+          <div className={`grid ${getVideoGridLayout(remoteStreams.length + 1)} gap-6`}>
             {/* Create an array with local video first, followed by all remote videos */}
             {[{
               id: socket.id,
@@ -861,7 +1001,7 @@ function Room() {
             }))].map(({ id, stream, isLocal, username, role, showRole }) => (
               <div 
                 key={id} 
-                className={`relative h-[200px] sm:h-[220px] md:h-[260px] lg:h-[300px] aspect-video ${!isLocal && playerRole === 'Police' && !roundEnded ? 'cursor-pointer transform hover:scale-102 transition-transform duration-200' : ''}`}
+                className={`relative h-[220px] sm:h-[260px] md:h-[280px] lg:h-[320px] aspect-video ${!isLocal && playerRole === 'Police' && !roundEnded ? 'cursor-pointer transform hover:scale-102 transition-transform duration-200' : ''}`}
                 onClick={() => !isLocal && playerRole === 'Police' && !roundEnded ? handlePlayerClick(id) : null}
               >
                 <PlayerVideo

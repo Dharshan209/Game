@@ -86,12 +86,23 @@ io.on('connection', (socket) => {
         // Send player count to everyone
         io.to(roomId).emit("player-count", count);
         
-        // Send list of other users in the room to the new user
+        // Get other users in the room
         const otherUsers = [...room].filter(id => id !== socket.id);
+        
+        // Send list of other users in the room to the new user
         socket.emit("all users", otherUsers);
+        console.log(`Sent user list to ${socket.id}: ${JSON.stringify(otherUsers)}`);
         
         // Notify other users in the room that a new user has joined
         socket.to(roomId).emit("user-joined", socket.id);
+        console.log(`Notified room ${roomId} about new user ${socket.id}`);
+        
+        // Also tell all existing users to initiate connections with the new user
+        // This ensures bidirectional connection initialization
+        otherUsers.forEach(userId => {
+          io.to(userId).emit("initiate-connection", socket.id);
+          console.log(`Told ${userId} to initiate connection with ${socket.id}`);
+        });
       } else {
         console.log(`Room ${roomId} not found for user ${socket.id}`);
         socket.emit("room-error", "Room not found!");
