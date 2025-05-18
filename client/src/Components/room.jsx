@@ -97,7 +97,7 @@ function Room() {
         setIsRequestingMedia(false);
         
         // Initialize the WebRTC connection
-        const connection = WebRTCConnection({
+        const connection = createWebRTCConnection({
           socket,
           roomId,
           localStreamRef,
@@ -124,7 +124,7 @@ function Room() {
               setMediaError("Video unavailable. Audio-only mode activated.");
               
               // Initialize WebRTC with audio-only stream
-              const connection = WebRTCConnection({
+              const connection = createWebRTCConnection({
                 socket,
                 roomId,
                 localStreamRef,
