@@ -57,6 +57,7 @@ function Room() {
   const localStreamRef = useRef(null);
   const peersRef = useRef({}); // key: socketId, value: RTCPeerConnection
   const connectionCheckIntervalRef = useRef(null);
+  const reconnectionIntervalRef = useRef(null);
 
   // Join room and set up socket listeners
   useEffect(() => {
@@ -73,6 +74,15 @@ function Room() {
       socket.emit('join room', roomId);
       hasJoinedRef.current = true;
     }
+    
+    // Periodically check if we need to reconnect to any peers
+    const reconnectionIntervalRef = useRef(null);
+    reconnectionIntervalRef.current = setInterval(() => {
+      if (remoteStreams.length < players.length - 1 && players.length > 1) {
+        console.log('Missing some peer connections, reconnecting...');
+        socket.emit('room:get-users', roomId);
+      }
+    }, 5000);
     
     // Setup event handlers
     
@@ -101,12 +111,28 @@ function Room() {
     function handleAllUsers(users) {
       console.log('Received all users in room:', users);
       users.forEach(userId => {
+        // Skip self
+        if (userId === socket.id) return;
+        
         // Check if we already have a connection to this user
         if (!peersRef.current[userId]) {
           console.log(`Initiating connection to user: ${userId}`);
           callUser(userId);
         } else {
-          console.log(`Already connected to user: ${userId}`);
+          // Check if the connection is still good
+          const peer = peersRef.current[userId];
+          if (['disconnected', 'failed', 'closed'].includes(peer.connectionState || peer.iceConnectionState)) {
+            console.log(`Connection to ${userId} is in state ${peer.connectionState || peer.iceConnectionState}, reconnecting...`);
+            // Close old peer
+            peer.close();
+            delete peersRef.current[userId];
+            // Remove from remote streams if exists
+            setRemoteStreams(prev => prev.filter(s => s.id !== userId));
+            // Create new connection
+            callUser(userId);
+          } else {
+            console.log(`Already connected to user: ${userId}`);
+          }
         }
       });
     }
@@ -207,6 +233,9 @@ function Room() {
       // Clear intervals
       if (connectionCheckIntervalRef.current) {
         clearInterval(connectionCheckIntervalRef.current);
+      }
+      if (reconnectionIntervalRef.current) {
+        clearInterval(reconnectionIntervalRef.current);
       }
     };
   }, [roomId, navigate, username]);
@@ -489,24 +518,9 @@ function Room() {
     return null;
   };
 
-  // Determine grid layout based on number of players
-  const getVideoGridLayout = (playerCount) => {
-    switch (playerCount) {
-      case 1:
-        return 'grid-cols-1';
-      case 2:
-        return 'grid-cols-1 md:grid-cols-2';
-      case 3:
-        return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3';
-      case 4:
-        return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-4';
-      case 5:
-        return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5';
-      case 6:
-        return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3';
-      default:
-        return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4';
-    }
+  // Fixed grid layout with 3 videos per row on desktop
+  const getVideoGridLayout = () => {
+    return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3';
   };
 
   // Handle room sharing
