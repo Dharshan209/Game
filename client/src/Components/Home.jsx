@@ -168,7 +168,7 @@ function Home() {
         {/* Hero Section */}
         <div className={`text-center mb-12 ${isAnimating ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'} transition-all duration-1000 ease-out`}>
           <h1 className="text-4xl md:text-6xl font-bold font-display text-white mb-4 tracking-tight leading-tight">
-            Welcome to <span className="text-transparent bg-clip-text bg-blue-purple-gradient">GameVerse</span>
+            Welcome to GameVerse</span>
           </h1>
           <p className="text-xl text-white/80 max-w-2xl mx-auto">
             The ultimate social deduction game where strategy, deception, and keen observation collide.
